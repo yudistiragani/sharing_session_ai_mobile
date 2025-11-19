@@ -36,9 +36,9 @@ class ChatPage extends StatelessWidget {
 
       context.read<ChatBloc>().add(UploadDocument(name: name, bytes: bytes, path: path));
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Mengunggah dokumen: $name')),
-      );
+      // ScaffoldMessenger.of(context).showSnackBar(
+      //   SnackBar(content: Text('Mengunggah dokumen: $name')),
+      // );
     } catch (e, st) {
       debugPrint('Error picking file: $e\n$st');
       ScaffoldMessenger.of(context).showSnackBar(
@@ -106,16 +106,17 @@ class ChatPage extends StatelessWidget {
                     return Expanded(
                       child: DocUploader(
                         onPick: () => _pickFile(context),
-                        isLoading: state.isLoading,
+                        isUploading: state.isUploading,
+                        isIndexing: state.isIndexing,
                       ),
                     );
                   },
                 ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  onPressed: () => context.read<ChatBloc>().add(ToggleComposerExpanded()),
-                  child: const Text('Saran & Prompt'),
-                ),
+                // const SizedBox(width: 8),
+                // ElevatedButton(
+                //   onPressed: () => context.read<ChatBloc>().add(ToggleComposerExpanded()),
+                //   child: const Text('Saran & Prompt'),
+                // ),
               ],
             ),
           ),

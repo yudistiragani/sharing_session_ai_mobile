@@ -22,12 +22,16 @@ class ChatMessageEntity extends Equatable {
 class ChatState extends Equatable {
   final List<ChatMessageEntity> messages;
   final bool isLoading;
+  final bool isUploading;
+  final bool isIndexing;
   final bool composerExpanded;
   final List<DocumentEntity> uploadedDocs; // NON-NULLABLE
 
   const ChatState({
     this.messages = const [],
     this.isLoading = false,
+    this.isUploading = false,
+    this.isIndexing = false,
     this.composerExpanded = false,
     List<DocumentEntity>? uploadedDocs, // accept nullable param
   }) : uploadedDocs = uploadedDocs ?? const []; // but store non-null
@@ -35,12 +39,16 @@ class ChatState extends Equatable {
   ChatState copyWith({
     List<ChatMessageEntity>? messages,
     bool? isLoading,
+    bool? isUploading,
+    bool? isIndexing,
     bool? composerExpanded,
     List<DocumentEntity>? uploadedDocs,
   }) {
     return ChatState(
       messages: messages ?? this.messages,
       isLoading: isLoading ?? this.isLoading,
+      isUploading: isUploading ?? this.isUploading,
+      isIndexing: isIndexing ?? this.isIndexing,
       composerExpanded: composerExpanded ?? this.composerExpanded,
       uploadedDocs: uploadedDocs ?? this.uploadedDocs,
     );

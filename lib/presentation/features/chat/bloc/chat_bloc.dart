@@ -71,7 +71,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       fromUser: true,
       createdAt: DateTime.now(),
     );
-    emit(state.copyWith(messages: [...state.messages, docMsg], isLoading: true));
+    emit(state.copyWith(messages: [...state.messages, docMsg], isLoading: true, isUploading: true, isIndexing: false,));
 
     try {
       final dio = Dio();
@@ -110,29 +110,100 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
             ? data['total_chunks'] as int
             : int.tryParse('${data['total_chunks']}');
 
-        // create DocumentEntity and update state (appends)
-        final docEntity = DocumentEntity(
+        // create initial doc entity (indexed=false)
+        var docEntity = DocumentEntity(
           docId: docId,
           filename: filename,
           totalChunks: totalChunks,
           uploadedAt: DateTime.now(),
         );
 
+        // append to state (optimistic)
         final updatedDocs = [...state.uploadedDocs, docEntity];
 
         emit(state.copyWith(
           uploadedDocs: updatedDocs,
-          isLoading: false,
+          isLoading: true, isUploading: false, isIndexing: true,
           messages: [
             ...state.messages,
             ChatMessageEntity(
               id: _uuid.v4(),
-              text: 'Dokumen \"$filename\" berhasil diunggah (doc_id: $docId).',
+              text: 'Dokumen \"$filename\" berhasil diunggah (doc_id: $docId). Memulai proses indexing...',
               fromUser: false,
               createdAt: DateTime.now(),
             )
           ],
         ));
+
+        // ---------- INDEXING STEP ----------
+        try {
+          final indexUrl = 'http://192.168.1.12:8000/agent/index';
+          // form-url-encoded body as required by endpoint
+          final indexResp = await dio.post(
+            indexUrl,
+            data: {
+              'doc_id': docId,
+              'mode': 'sync',
+              'batch_size': 16,
+              'concurrency': 8,
+            },
+            options: Options(
+              contentType: Headers.formUrlEncodedContentType,
+              headers: {'accept': 'application/json'},
+            ),
+          );
+
+          if (indexResp.statusCode == 200 || indexResp.statusCode == 201) {
+            final idxData = indexResp.data;
+            final job = idxData['job'];
+            final jobId = job != null ? job['id']?.toString() : null;
+            final finishedAtStr = job != null ? job['finished_at']?.toString() : null;
+            DateTime? finishedAt;
+            try {
+              if (finishedAtStr != null) finishedAt = DateTime.parse(finishedAtStr);
+            } catch (_) {}
+
+            final details = job != null ? job['details'] : null;
+            final indexedCount = details != null && details['indexed_count'] != null
+                ? int.tryParse('${details['indexed_count']}')
+                : null;
+
+            // update docEntity with indexing result
+            final updatedDocEntity = docEntity.copyWith(
+              indexed: true,
+              jobId: jobId,
+              indexedAt: finishedAt,
+              indexedCount: indexedCount,
+            );
+
+            // replace last (or matching) doc in list (safer: replace by docId)
+            final replaced = updatedDocs.map((d) => d.docId == docId ? updatedDocEntity : d).toList();
+
+            emit(state.copyWith(
+              uploadedDocs: replaced,
+              isLoading: false,
+              isUploading: false,
+              isIndexing: false,
+              messages: [
+                ...state.messages,
+                ChatMessageEntity(
+                  id: _uuid.v4(),
+                  text: 'Indexing selesai untuk \"$filename\" — indexed_count: ${indexedCount ?? '-'}',
+                  fromUser: false,
+                  createdAt: DateTime.now(),
+                )
+              ],
+            ));
+          } else {
+            // indexing returned non-200
+            emit(state.copyWith(isLoading: false, isUploading: false, isIndexing: false));
+            add(ReceiveAgentMessage('Indexing gagal untuk \"$filename\": server status ${indexResp.statusCode}'));
+          }
+        } catch (e, st) {
+          debugPrint('Indexing error: $e\n$st');
+          emit(state.copyWith(isLoading: false, isUploading: false, isIndexing: false));
+          add(ReceiveAgentMessage('Gagal melakukan indexing untuk \"$filename\": $e'));
+        }
       } else {
         add(ReceiveAgentMessage('Gagal mengunggah dokumen \"$name\": server mengembalikan status ${resp.statusCode}'));
       }
@@ -140,7 +211,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       debugPrint('Upload error: $e\n$st');
       add(ReceiveAgentMessage('Gagal memproses dokumen \"$name\": $e'));
     } finally {
-      emit(state.copyWith(isLoading: false));
+      emit(state.copyWith(isLoading: false, isUploading: false, isIndexing: false));
     }
   }
 
