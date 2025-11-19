@@ -7,6 +7,8 @@ import '../widgets/message_bubble.dart';
 import '../widgets/input_field.dart';
 import '../widgets/doc_uploader.dart';
 import 'package:file_picker/file_picker.dart';
+import 'dart:typed_data';
+import '../widgets/document_card.dart';
 
 class ChatPage extends StatelessWidget {
   const ChatPage({super.key});
@@ -15,9 +17,9 @@ class ChatPage extends StatelessWidget {
     try {
       final result = await FilePicker.platform.pickFiles(
         allowMultiple: false,
-        withData: true, // IMPORTANT: ambil bytes juga
+        withData: true,
         type: FileType.custom,
-        allowedExtensions: ['pdf','docx','doc','csv','txt'],
+        allowedExtensions: ['pdf', 'docx', 'doc', 'csv', 'txt'],
       );
 
       if (result == null) {
@@ -29,17 +31,16 @@ class ChatPage extends StatelessWidget {
 
       final file = result.files.single;
       final name = file.name;
-      final bytes = file.bytes; // bisa null di beberapa platform jika withData=false
+      final bytes = file.bytes;
       final path = file.path;
 
-      // dispatch richer event
       context.read<ChatBloc>().add(UploadDocument(name: name, bytes: bytes, path: path));
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Mengunggah dokumen: $name')),
       );
-    } catch (e) {
-      debugPrint('Error picking file: $e');
+    } catch (e, st) {
+      debugPrint('Error picking file: $e\n$st');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Gagal memilih dokumen: $e')),
       );
@@ -117,6 +118,34 @@ class ChatPage extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+
+          BlocBuilder<ChatBloc, ChatState>(
+            builder: (context, state) {
+              if (state.uploadedDocs.isEmpty) return const SizedBox.shrink();
+              final last = state.uploadedDocs.last;
+              return DocumentCard(
+                doc: last,
+                onTap: () {
+                  showModalBottomSheet(context: context, builder: (_) {
+                    return Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(last.filename, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 8),
+                          Text('doc_id: ${last.docId}'),
+                          Text('chunks: ${last.totalChunks ?? '-'}'),
+                          const SizedBox(height: 12),
+                          ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text('Tutup')),
+                        ],
+                      ),
+                    );
+                  });
+                },
+              );
+            },
           ),
 
           // Composer
