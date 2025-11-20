@@ -39,5 +39,22 @@ class UploadDocument extends ChatEvent {
   List<Object?> get props => [name, bytes, path];
 }
 
-
 class ToggleComposerExpanded extends ChatEvent {}
+
+// Chat event: ask question against a specific document
+class AskDocumentQuestion extends ChatEvent {
+  final String question;
+  final String docId; // gunakan last uploaded docId jika tidak disediakan oleh UI
+  final int topK;
+
+  AskDocumentQuestion({
+    required this.question,
+    required this.docId,
+    this.topK = 3,
+  });
+
+  @override
+  List<Object?> get props => [question, docId, topK];
+}
+
+

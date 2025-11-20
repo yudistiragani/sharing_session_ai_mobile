@@ -19,6 +19,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     on<ReceiveAgentMessage>(_onReceiveAgentMessage);
     on<UploadDocument>(_onUploadDocument);
     on<ToggleComposerExpanded>(_onToggleComposerExpanded);
+    on<AskDocumentQuestion>(_onAskDocumentQuestion);
   }
 
   FutureOr<void> _onStarted(ChatStarted event, Emitter<ChatState> emit) {
@@ -234,5 +235,64 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
   FutureOr<void> _onToggleComposerExpanded(ToggleComposerExpanded event, Emitter<ChatState> emit) {
     emit(state.copyWith(composerExpanded: !state.composerExpanded));
+  }
+
+  FutureOr<void> _onAskDocumentQuestion(AskDocumentQuestion event, Emitter<ChatState> emit) async {
+    final question = event.question.trim();
+    final docId = event.docId;
+    final topK = event.topK;
+
+    if (question.isEmpty) return;
+
+    // 1) Add user's question into chat UI
+    final userMsg = ChatMessageEntity(
+      id: _uuid.v4(),
+      text: question,
+      fromUser: true,
+      createdAt: DateTime.now(),
+    );
+    emit(state.copyWith(messages: [...state.messages, userMsg], isUploading: false, isIndexing: false, isLoading: true));
+
+    try {
+      final dio = Dio();
+      final url = 'http://192.168.1.12:8000/agent/chat';
+
+      final resp = await dio.post(
+        url,
+        data: {
+          'doc_id': docId,
+          'question': question,
+          'top_k': topK,
+        },
+        options: Options(
+          contentType: Headers.formUrlEncodedContentType,
+          headers: {'accept': 'application/json'},
+        ),
+      );
+
+      if (resp.statusCode == 200 || resp.statusCode == 201) {
+        final data = resp.data;
+        final answer = data['answer']?.toString() ?? 'Tidak ada jawaban dari server.';
+        final sessionId = data['chat_session_id']?.toString();
+
+        // Append agent answer
+        final agentMsg = ChatMessageEntity(
+          id: _uuid.v4(),
+          text: answer,
+          fromUser: false,
+          createdAt: DateTime.now(),
+        );
+
+        // optional: you can store sessionId somewhere if needed (not implemented here)
+        emit(state.copyWith(messages: [...state.messages, agentMsg], isLoading: false));
+      } else {
+        add(ReceiveAgentMessage('Gagal mendapatkan jawaban: server status ${resp.statusCode}'));
+        emit(state.copyWith(isLoading: false));
+      }
+    } catch (e, st) {
+      debugPrint('Chat request error: $e\n$st');
+      add(ReceiveAgentMessage('Terjadi error saat meminta jawaban: $e'));
+      emit(state.copyWith(isLoading: false));
+    }
   }
 }

@@ -154,7 +154,21 @@ class ChatPage extends StatelessWidget {
             return ChatInputField(
               isBusy: state.isLoading,
               onAttach: () => _pickFile(context),
-              onSend: (text) => context.read<ChatBloc>().add(SendUserMessage(text)),
+              onSend: (text) {
+                final trimmed = text.trim();
+                if (trimmed.isEmpty) return;
+
+                // jika ada dokumen yg diupload & diindex (pakai yang terakhir), kirim ke endpoint chat
+                if (state.uploadedDocs.isNotEmpty) {
+                  final lastDoc = state.uploadedDocs.last;
+                  context.read<ChatBloc>().add(
+                    AskDocumentQuestion(question: trimmed, docId: lastDoc.docId, topK: 3),
+                  );
+                } else {
+                  // fallback: lokal echo / normal message
+                  context.read<ChatBloc>().add(SendUserMessage(trimmed));
+                }
+              },
             );
           }),
         ],
