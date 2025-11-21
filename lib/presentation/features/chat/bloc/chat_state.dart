@@ -1,6 +1,26 @@
-// lib/presentation/features/chat/bloc/chat_state.dart
 import 'package:equatable/equatable.dart';
 import '../../../../domain/entities/document.dart'; // sesuaikan path jika perlu
+
+class DocContext {
+  final String title; // optional label from contexts array
+  final String snippet; // short snippet or summary
+  final String docId;
+  final String sourceId; // optional id reference
+
+  DocContext({
+    required this.title,
+    required this.snippet,
+    required this.docId,
+    required this.sourceId,
+  });
+}
+
+class DocChunk {
+  final String chunkId;
+  final String text;
+  final List<String>? highlights; // highlighted substrings (if provided)
+  DocChunk({required this.chunkId, required this.text, this.highlights});
+}
 
 class ChatMessageEntity extends Equatable {
   final String id;
@@ -26,6 +46,10 @@ class ChatState extends Equatable {
   final bool isIndexing;
   final bool composerExpanded;
   final List<DocumentEntity> uploadedDocs; // NON-NULLABLE
+  final List<DocContext> lastContexts;
+  final String? activeDocId;
+  final List<DocChunk> activeTopChunks;
+  final List<DocChunk> activeAllChunks;
 
   const ChatState({
     this.messages = const [],
@@ -33,7 +57,11 @@ class ChatState extends Equatable {
     this.isUploading = false,
     this.isIndexing = false,
     this.composerExpanded = false,
-    List<DocumentEntity>? uploadedDocs, // accept nullable param
+    List<DocumentEntity>? uploadedDocs,
+    this.lastContexts = const [],
+    this.activeDocId,
+    this.activeTopChunks = const [],
+    this.activeAllChunks = const [],
   }) : uploadedDocs = uploadedDocs ?? const []; // but store non-null
 
   ChatState copyWith({
@@ -43,6 +71,10 @@ class ChatState extends Equatable {
     bool? isIndexing,
     bool? composerExpanded,
     List<DocumentEntity>? uploadedDocs,
+    List<DocContext>? lastContexts,
+    String? activeDocId,
+    List<DocChunk>? activeTopChunks,
+    List<DocChunk>? activeAllChunks,
   }) {
     return ChatState(
       messages: messages ?? this.messages,
@@ -51,9 +83,16 @@ class ChatState extends Equatable {
       isIndexing: isIndexing ?? this.isIndexing,
       composerExpanded: composerExpanded ?? this.composerExpanded,
       uploadedDocs: uploadedDocs ?? this.uploadedDocs,
+      lastContexts: lastContexts ?? this.lastContexts,
+      activeDocId: activeDocId ?? this.activeDocId,
+      activeTopChunks: activeTopChunks ?? this.activeTopChunks,
+      activeAllChunks: activeAllChunks ?? this.activeAllChunks,
     );
   }
 
   @override
-  List<Object?> get props => [messages, isLoading, composerExpanded, uploadedDocs];
+  List<Object?> get props => [messages, isLoading, composerExpanded, uploadedDocs, lastContexts,
+        activeDocId,
+        activeTopChunks,
+        activeAllChunks,];
 }

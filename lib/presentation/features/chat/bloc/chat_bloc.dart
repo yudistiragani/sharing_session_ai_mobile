@@ -20,6 +20,150 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     on<UploadDocument>(_onUploadDocument);
     on<ToggleComposerExpanded>(_onToggleComposerExpanded);
     on<AskDocumentQuestion>(_onAskDocumentQuestion);
+    on<FetchDocumentSources>(_onFetchDocumentSources);
+  }
+
+  FutureOr<void> _onAskDocumentQuestion(AskDocumentQuestion event, Emitter<ChatState> emit) async {
+    final question = event.question.trim();
+    final docId = event.docId;
+    final topK = event.topK;
+
+    if (question.isEmpty) return;
+
+    // 1) push user message
+    final userMsg = ChatMessageEntity(
+      id: _uuid.v4(),
+      text: question,
+      fromUser: true,
+      createdAt: DateTime.now(),
+    );
+
+    emit(state.copyWith(messages: [...state.messages, userMsg], isLoading: true));
+
+    try {
+      final dio = Dio();
+      final url = 'http://192.168.1.12:8000/agent/chat';
+
+      final resp = await dio.post(
+        url,
+        data: {'doc_id': docId, 'question': question, 'top_k': topK},
+        options: Options(contentType: Headers.formUrlEncodedContentType, headers: {'accept': 'application/json'}),
+      );
+
+      if (resp.statusCode == 200 || resp.statusCode == 201) {
+        final data = resp.data;
+
+        final answer = data['answer']?.toString() ?? 'No answer';
+        final contextsRaw = data['contexts']; // expected array (may be empty)
+        final List<DocContext> contexts = [];
+
+        if (contextsRaw is List) {
+          for (final item in contextsRaw) {
+            try {
+              // item may be string or object with fields
+              if (item is String) {
+                contexts.add(DocContext(title: '', snippet: item, docId: docId, sourceId: ''));
+              } else if (item is Map) {
+                final title = item['title']?.toString() ?? (item['source']?.toString() ?? '');
+                final snippet = item['snippet']?.toString() ?? item['text']?.toString() ?? '';
+                final sourceDocId = item['doc_id']?.toString() ?? docId;
+                final sourceId = item['id']?.toString() ?? '';
+                contexts.add(DocContext(title: title, snippet: snippet, docId: sourceDocId, sourceId: sourceId));
+              }
+            } catch (_) {}
+          }
+        }
+
+        // Add agent message (answer rendered as markdown in UI)
+        final agentMsg = ChatMessageEntity(
+          id: _uuid.v4(),
+          text: answer,
+          fromUser: false,
+          createdAt: DateTime.now(),
+        );
+
+        emit(state.copyWith(
+          messages: [...state.messages, agentMsg],
+          lastContexts: contexts,
+          isLoading: false,
+        ));
+      } else {
+        add(ReceiveAgentMessage('Gagal mendapatkan jawaban: status ${resp.statusCode}'));
+        emit(state.copyWith(isLoading: false));
+      }
+    } catch (e, st) {
+      debugPrint('AskDocumentQuestion error: $e\n$st');
+      add(ReceiveAgentMessage('Terjadi error saat meminta jawaban: $e'));
+      emit(state.copyWith(isLoading: false));
+    }
+  }
+
+  // Handler: fetch document sources -> GET /agent/docs/{doc_id}?question=...&top_k=3
+  FutureOr<void> _onFetchDocumentSources(FetchDocumentSources event, Emitter<ChatState> emit) async {
+    final docId = event.docId;
+    final question = event.question;
+    final topK = event.topK;
+
+    emit(state.copyWith(isLoading: true));
+
+    try {
+      final dio = Dio();
+      final url = 'http://192.168.1.12:8000/agent/docs/$docId';
+      final resp = await dio.get(url, queryParameters: {'question': question, 'top_k': topK});
+
+      if (resp.statusCode == 200 || resp.statusCode == 201) {
+        final data = resp.data;
+
+        // parse top_chunks and chunks (flexible)
+        final topChunksRaw = data['top_chunks'];
+        final chunksRaw = data['chunks'] ?? data['all_chunks'] ?? [];
+
+        List<DocChunk> topChunks = [];
+        List<DocChunk> allChunks = [];
+
+        if (topChunksRaw is List) {
+          for (final item in topChunksRaw) {
+            try {
+              if (item is Map) {
+                topChunks.add(DocChunk(
+                  chunkId: item['chunk_id']?.toString() ?? item['id']?.toString() ?? '',
+                  text: item['text']?.toString() ?? item['content']?.toString() ?? '',
+                  highlights: item['highlights'] is List ? List<String>.from(item['highlights'].map((e)=>e.toString())) : null,
+                ));
+              }
+            } catch (_) {}
+          }
+        }
+
+        if (chunksRaw is List) {
+          for (final item in chunksRaw) {
+            try {
+              if (item is Map) {
+                allChunks.add(DocChunk(
+                  chunkId: item['chunk_id']?.toString() ?? item['id']?.toString() ?? '',
+                  text: item['text']?.toString() ?? item['content']?.toString() ?? '',
+                  highlights: item['highlights'] is List ? List<String>.from(item['highlights'].map((e)=>e.toString())) : null,
+                ));
+              }
+            } catch (_) {}
+          }
+        }
+
+        emit(state.copyWith(
+          activeDocId: docId,
+          activeTopChunks: topChunks,
+          activeAllChunks: allChunks,
+          isLoading: false,
+        ));
+      } else {
+        add(ReceiveAgentMessage('Gagal mengambil sumber dokumen: status ${resp.statusCode}'));
+        emit(state.copyWith(isLoading: false));
+      }
+    } catch (e, st) {
+      debugPrint('FetchDocumentSources error: $e\n$st');
+      add(ReceiveAgentMessage('Terjadi error saat mengambil sumber dokumen: $e'));
+      emit(state.copyWith(isLoading: false));
+    }
   }
 
   FutureOr<void> _onStarted(ChatStarted event, Emitter<ChatState> emit) {
@@ -237,62 +381,62 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     emit(state.copyWith(composerExpanded: !state.composerExpanded));
   }
 
-  FutureOr<void> _onAskDocumentQuestion(AskDocumentQuestion event, Emitter<ChatState> emit) async {
-    final question = event.question.trim();
-    final docId = event.docId;
-    final topK = event.topK;
+  // FutureOr<void> _onAskDocumentQuestion(AskDocumentQuestion event, Emitter<ChatState> emit) async {
+  //   final question = event.question.trim();
+  //   final docId = event.docId;
+  //   final topK = event.topK;
 
-    if (question.isEmpty) return;
+  //   if (question.isEmpty) return;
 
-    // 1) Add user's question into chat UI
-    final userMsg = ChatMessageEntity(
-      id: _uuid.v4(),
-      text: question,
-      fromUser: true,
-      createdAt: DateTime.now(),
-    );
-    emit(state.copyWith(messages: [...state.messages, userMsg], isUploading: false, isIndexing: false, isLoading: true));
+  //   // 1) Add user's question into chat UI
+  //   final userMsg = ChatMessageEntity(
+  //     id: _uuid.v4(),
+  //     text: question,
+  //     fromUser: true,
+  //     createdAt: DateTime.now(),
+  //   );
+  //   emit(state.copyWith(messages: [...state.messages, userMsg], isUploading: false, isIndexing: false, isLoading: true));
 
-    try {
-      final dio = Dio();
-      final url = 'http://192.168.1.12:8000/agent/chat';
+  //   try {
+  //     final dio = Dio();
+  //     final url = 'http://192.168.1.12:8000/agent/chat';
 
-      final resp = await dio.post(
-        url,
-        data: {
-          'doc_id': docId,
-          'question': question,
-          'top_k': topK,
-        },
-        options: Options(
-          contentType: Headers.formUrlEncodedContentType,
-          headers: {'accept': 'application/json'},
-        ),
-      );
+  //     final resp = await dio.post(
+  //       url,
+  //       data: {
+  //         'doc_id': docId,
+  //         'question': question,
+  //         'top_k': topK,
+  //       },
+  //       options: Options(
+  //         contentType: Headers.formUrlEncodedContentType,
+  //         headers: {'accept': 'application/json'},
+  //       ),
+  //     );
 
-      if (resp.statusCode == 200 || resp.statusCode == 201) {
-        final data = resp.data;
-        final answer = data['answer']?.toString() ?? 'Tidak ada jawaban dari server.';
-        final sessionId = data['chat_session_id']?.toString();
+  //     if (resp.statusCode == 200 || resp.statusCode == 201) {
+  //       final data = resp.data;
+  //       final answer = data['answer']?.toString() ?? 'Tidak ada jawaban dari server.';
+  //       final sessionId = data['chat_session_id']?.toString();
 
-        // Append agent answer
-        final agentMsg = ChatMessageEntity(
-          id: _uuid.v4(),
-          text: answer,
-          fromUser: false,
-          createdAt: DateTime.now(),
-        );
+  //       // Append agent answer
+  //       final agentMsg = ChatMessageEntity(
+  //         id: _uuid.v4(),
+  //         text: answer,
+  //         fromUser: false,
+  //         createdAt: DateTime.now(),
+  //       );
 
-        // optional: you can store sessionId somewhere if needed (not implemented here)
-        emit(state.copyWith(messages: [...state.messages, agentMsg], isLoading: false));
-      } else {
-        add(ReceiveAgentMessage('Gagal mendapatkan jawaban: server status ${resp.statusCode}'));
-        emit(state.copyWith(isLoading: false));
-      }
-    } catch (e, st) {
-      debugPrint('Chat request error: $e\n$st');
-      add(ReceiveAgentMessage('Terjadi error saat meminta jawaban: $e'));
-      emit(state.copyWith(isLoading: false));
-    }
-  }
+  //       // optional: you can store sessionId somewhere if needed (not implemented here)
+  //       emit(state.copyWith(messages: [...state.messages, agentMsg], isLoading: false));
+  //     } else {
+  //       add(ReceiveAgentMessage('Gagal mendapatkan jawaban: server status ${resp.statusCode}'));
+  //       emit(state.copyWith(isLoading: false));
+  //     }
+  //   } catch (e, st) {
+  //     debugPrint('Chat request error: $e\n$st');
+  //     add(ReceiveAgentMessage('Terjadi error saat meminta jawaban: $e'));
+  //     emit(state.copyWith(isLoading: false));
+  //   }
+  // }
 }

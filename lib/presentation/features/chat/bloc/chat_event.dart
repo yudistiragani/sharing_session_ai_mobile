@@ -57,4 +57,14 @@ class AskDocumentQuestion extends ChatEvent {
   List<Object?> get props => [question, docId, topK];
 }
 
+// NEW: fetch document sources / highlights
+class FetchDocumentSources extends ChatEvent {
+  final String docId;
+  final String question;
+  final int topK;
 
+  FetchDocumentSources({required this.docId, required this.question, this.topK = 3});
+
+  @override
+  List<Object?> get props => [docId, question, topK];
+}
