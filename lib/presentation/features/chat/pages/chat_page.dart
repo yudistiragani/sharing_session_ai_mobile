@@ -9,6 +9,7 @@ import '../widgets/doc_uploader.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:typed_data';
 import '../widgets/document_card.dart';
+import '../widgets/gemini_thinking_bubble.dart';
 
 class ChatPage extends StatelessWidget {
   const ChatPage({super.key});
@@ -84,10 +85,16 @@ class ChatPage extends StatelessWidget {
                     ),
                     if (state.isLoading)
                       const Positioned(
-                        top: 8,
-                        right: 16,
-                        child: Chip(label: Text('Thinking...')),
+                        left: 12,
+                        bottom: 70,
+                        child: GeminiThinkingBubble(avatarSize: 20, ringRadius: 15, ringThickness: 3, rotationSeconds: 0.5), // compact & fast by default
                       ),
+                    // if (state.isLoading)
+                    //   const Positioned(
+                    //     top: 8,
+                    //     right: 16,
+                    //     child: Chip(label: Text('Thinking...')),
+                    //   ),
                   ],
                 );
               },
@@ -95,29 +102,29 @@ class ChatPage extends StatelessWidget {
           ),
 
           // Quick action bar
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            child: Row(
-              children: [
-                BlocBuilder<ChatBloc, ChatState>(
-                  builder: (context, state) {
-                    return Expanded(
-                      child: DocUploader(
-                        onPick: () => _pickFile(context),
-                        isUploading: state.isUploading,
-                        isIndexing: state.isIndexing,
-                      ),
-                    );
-                  },
-                ),
-                // const SizedBox(width: 8),
-                // ElevatedButton(
-                //   onPressed: () => context.read<ChatBloc>().add(ToggleComposerExpanded()),
-                //   child: const Text('Saran & Prompt'),
-                // ),
-              ],
-            ),
-          ),
+          // Padding(
+          //   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          //   child: Row(
+          //     children: [
+          //       BlocBuilder<ChatBloc, ChatState>(
+          //         builder: (context, state) {
+          //           return Expanded(
+          //             child: DocUploader(
+          //               onPick: () => _pickFile(context),
+          //               isUploading: state.isUploading,
+          //               isIndexing: state.isIndexing,
+          //             ),
+          //           );
+          //         },
+          //       ),
+          //       // const SizedBox(width: 8),
+          //       // ElevatedButton(
+          //       //   onPressed: () => context.read<ChatBloc>().add(ToggleComposerExpanded()),
+          //       //   child: const Text('Saran & Prompt'),
+          //       // ),
+          //     ],
+          //   ),
+          // ),
 
           BlocBuilder<ChatBloc, ChatState>(
             builder: (context, state) {
